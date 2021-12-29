@@ -16,7 +16,7 @@ input.forEach(x => {
     })
 })
 
-console.log('part1', easyDigitCount)
+console.log('Part 1: ', easyDigitCount)
 
 // define our 7 segments
 //     _1_
@@ -28,7 +28,7 @@ console.log('part1', easyDigitCount)
 // this means every number 0 to 8 must, when the segments are "summed", conform to the following result
 // I tried to move numbers around the segment positions to end up with unique sums 
 // but it didn't work. I think it probably doesn't matter much anyway
-const POSSIBLE_SUMS = new Map([
+const CORRECT_SUM = new Map([
     [1, 8],
     [2, 15],
     [3, 17],
@@ -37,7 +37,21 @@ const POSSIBLE_SUMS = new Map([
     [6, 19],
     [7, 9],
     [8, 21],
+    [9, 17],
     [0, 18]
+])
+
+const DIGIT_MAP = new Map([
+    ['012456', '0'],
+    ['26', '1'],
+    ['12345', '2'],
+    ['12356', '3'],
+    ['0236', '4'],
+    ['01356', '5'],
+    ['013456', '6'],
+    ['126', '7'],
+    ['0123456', '8'],
+    ['012356', '9']
 ])
 
 const EasyDigitCountMap = new Map([
@@ -49,12 +63,15 @@ const EasyDigitCountMap = new Map([
 
 
 // process each unique digit (1, 4, 7, 8) and store their possible values
-input = [input[0]]
+//input = [input[0]] //testing
+const answers = [] as number[]
 input.forEach(x => {
     const data = x.split(' ')
     const observations = data.splice(0, data.findIndex(x => x === DELIMITER))
+    const readValues = data.splice(data.findIndex(x => x === DELIMITER) + 1)
 
-    console.log(observations)
+    //console.log('observations', observations)
+    //console.log('readValues', readValues)
 
     // for one input, "combinations" defines the possible permutations of a configuration
     const combinations = {} as Record<Digits, string[]>
@@ -66,150 +83,132 @@ input.forEach(x => {
             combinations[segmentNumber] = o.split('')
         }
     })
-    console.log('combinations', combinations)
+    //console.log('combinations', combinations)
 
     // we need to generate all possible mappings from the given combination object
     const possibleConfigs = generatePossibleConfigs(combinations)
-    
-    console.log('possibleConfigs', possibleConfigs)
+    //console.log('possibleConfigs', possibleConfigs)
+
+    // for each possible config, hydrate with numbers and test if it sums to ANSWER_SUM, if it does, that is the correct mapping
+    // then we add those values into our answer sum
+    let answerNumber = 0
+    for (let i = 0; i < possibleConfigs.length; i++) {
+        const configToTest = possibleConfigs[i]
+        const configKeys = Object.keys(configToTest)
+        const configValues = Object.values(configToTest)
+        const mappings = new Map(configValues.map((x, i) => [x, configKeys[i]]))
+        //console.log('mappings', mappings)
+
+        const testSums = [] as number[]
+        for (let ii = 0; ii < observations.length; ii++) {
+            const ob = observations[ii] // e.g. fdeba
+
+            let letterGroupSum = 0
+            for (let iii = 0; iii < ob.length; iii++) {
+                const letter = ob[iii]
+
+                const letterValue = mappings.get(letter) ?? '-999' // bootleg error
+                letterGroupSum += Number.parseInt(letterValue)
+            }
+
+            testSums.push(letterGroupSum)
+        }
+
+        // see if testSums matches CORRECT_SUM
+        const testSumsSorted = testSums.sort()
+        const correctSumSorted = Array.from(CORRECT_SUM.values()).sort()
+        //console.log('testSumsSorted', testSumsSorted, 'correctSumSorted', correctSumSorted)
+        let isMatch = true
+        correctSumSorted.forEach((c, i) => {
+            const testSumValue = testSumsSorted[i]
+            if (testSumValue !== c) {
+                isMatch = false
+            }
+        })
+
+        // use the current possibleConfig to determine the answer sum
+        if (isMatch) {
+            let readNumber = ''
+            readValues.forEach(r => {
+                const letterValues = [] as number[]
+                for (let index = 0; index < r.length; index++) {
+                    const letter = r[index];
+                    const letterValue = mappings.get(letter) ?? '-999'
+                    letterValues.push(Number.parseInt(letterValue))
+                }
+
+                const letterValuesSortedStringed = letterValues.sort().reduce((acc, curr) => {
+                    return acc += curr.toString()
+                }, '')
+
+                const matchingDigit = DIGIT_MAP.get(letterValuesSortedStringed) ?? ''
+                readNumber += matchingDigit
+            })
+
+            // parse
+            answerNumber = Number.parseInt(readNumber)
+            answers.push(answerNumber)
+        }
+
+        //console.log('configToTest', configToTest, 'testSums', testSums)
+    }
 })
+
+//console.log('answers', answers)
+const answersSummed = answers.reduce((acc, curr) => acc + curr, 0)
+console.log('Part 2: ', answersSummed)
 
 function generatePossibleConfigs(combinations: Record<Digits, string[]>): PossibleConfig[] {
     const output = [] as PossibleConfig[]
 
-    // looping through 1, 4, 7 and 8 possibilities should leave us with all unique combinations of a digit configuration
-    let one = combinations[1]
-    let four = combinations[4]
-    let seven = combinations[7]
-    let eight = combinations[8]
+    // preprocessing
+    const oneLetters = [...combinations[1]]
+    const fourLetters = combinations[4].filter(x => !oneLetters.includes(x))
+    const sevenLetters = combinations[7].filter(x => !fourLetters.includes(x) && !oneLetters.includes(x))
+    const eightLetters = combinations[8].filter(x => !sevenLetters.includes(x) && !fourLetters.includes(x) && !oneLetters.includes(x))
 
-    combinations[1].forEach(o => {
+    // looping through 1, 4, 7 and 8 possibilities should leave us with all unique combinations of a digit configuration
+    let one = oneLetters
+    let four = fourLetters
+    let seven = sevenLetters
+    let eight = eightLetters
+
+    for (let oi = 0; oi < oneLetters.length; oi++) {
+        const o = oneLetters[oi]
+
         const possibleConfig = {} as PossibleConfig
 
-        // assign letter to the spot it could belong to
-        // order matters here, we are using leftover letters to fill the other possible spot
-        // at the end of these loops we should have all spots filled out based on elimination
         possibleConfig[2] = o
-        exhaustLetter(o, 1)
-        const leftover = one[0]
-        possibleConfig[6] = leftover
-        exhaustLetter(leftover, 1)
+        const leftoverOne = one.find(x => x !== o) ?? ''
+        possibleConfig[6] = leftoverOne
 
-        combinations[4].forEach(f => {
-            if (!four.includes(f)) {
-                // continue next loop if the current letter has already been used up
-                return 
-            }
+        for (let fi = 0; fi < fourLetters.length; fi++) {
+            const f = fourLetters[fi];
+
             possibleConfig[0] = f
-            exhaustLetter(f, 4)
-            const leftover = four[0] // should be the only element remaining
-            possibleConfig[3] = leftover
-            exhaustLetter(leftover, 4)
+            const leftoverFour = four.find(x => x !== f) ?? '' // should be the only element remaining
+            possibleConfig[3] = leftoverFour
 
-            combinations[7].forEach(s => {
-                if (!seven.includes(s)) {
-                    // continue next loop if the current letter has already been used up
-                    return 
-                }
+            for (let si = 0; si < sevenLetters.length; si++) { // There is no need to loop for seven in retrospect...
+                const s = sevenLetters[si];
+
                 possibleConfig[1] = s
-                exhaustLetter(s, 7)
 
-                combinations[8].forEach(e => {
-                    if (!eight.includes(e)) {
-                        // continue next loop if the current letter has already been used up
-                        return 
-                    }
+                for (let ei = 0; ei < eightLetters.length; ei++) {
+                    const e = eightLetters[ei];
+
                     possibleConfig[5] = e
-                    exhaustLetter(e, 8)
-                    const leftover = eight[0] // again should only have one remaining letter after higher loops
-                    possibleConfig[4] = leftover
+                    const leftoverEight = eight.find(x => x !== e) ?? '' // again should only have one remaining letter after higher loops
+                    possibleConfig[4] = leftoverEight
 
-                    // no need to exhaust we are done
-                    // refresh all letters for next round of loops
-                    refreshLetters()
-                    output.push(possibleConfig)
-                })
-            })
-        })
-    })
-
-    return output
-
-    function exhaustLetter(letterToRemove: string, level: number){
-        if (level === 8) {
-            if (eight.indexOf(letterToRemove) >= 0) eight.splice(eight.indexOf(letterToRemove), 1)
-        }
-        if (level === 7) {
-            if (seven.indexOf(letterToRemove) >= 0) seven.splice(seven.indexOf(letterToRemove), 1)
-            if (eight.indexOf(letterToRemove) >= 0) eight.splice(eight.indexOf(letterToRemove), 1)
-        }
-        if (level === 4) {
-            if (four.indexOf(letterToRemove) >= 0) four.splice(four.indexOf(letterToRemove), 1)
-            if (seven.indexOf(letterToRemove) >= 0) seven.splice(seven.indexOf(letterToRemove), 1)
-            if (eight.indexOf(letterToRemove) >= 0) eight.splice(eight.indexOf(letterToRemove), 1)
-        }
-        if (level === 1) {
-            if (one.indexOf(letterToRemove) >= 0) one.splice(one.indexOf(letterToRemove), 1)
-            if (four.indexOf(letterToRemove) >= 0) four.splice(four.indexOf(letterToRemove), 1)
-            if (seven.indexOf(letterToRemove) >= 0) seven.splice(seven.indexOf(letterToRemove), 1)
-            if (eight.indexOf(letterToRemove) >= 0) eight.splice(eight.indexOf(letterToRemove), 1)
-        }
-    }
-
-    function refreshLetters() {
-        one = combinations[1]
-        four = combinations[4]
-        seven = combinations[7]
-        eight = combinations[8]
-    }
-}
-
-
-// cant remember what I was trying to do here
-function parseCombinations(combinations: Record<Digits, string[]>): PossibleConfig[] {
-    const output = [] as PossibleConfig[]
-
-    // while any digit property in the initial combinations object has more than one letter in it's array of possibilities
-    // then there are still possible configurations to generate
-    [1, 4, 7, 8].forEach(n => {
-        const nDigit = n as Digits
-        while (combinations[nDigit].length > 1) {
-            const nDigitLetter = combinations[nDigit][0]
-
-            const possibleConfig: PossibleConfig = {}
-            switch (nDigit) {
-                case 1:
-                    if (!possibleConfig[2]) possibleConfig[2] = nDigitLetter
-                    else possibleConfig[6] = nDigitLetter
-                    break;
-                case 4:
-                    if (!possibleConfig[0]) possibleConfig[0] = nDigitLetter
-                    else possibleConfig[3] = nDigitLetter
-                case 7: possibleConfig[1] = nDigitLetter
-                case 8:
-                    if (!possibleConfig[4]) possibleConfig[4] = nDigitLetter
-                    else possibleConfig[5] = nDigitLetter
-                default:
-                    break;
+                    output.push({ ...possibleConfig })
+                }
             }
         }
-    })
+    }
 
     return output
 }
-
-// interface ConfigCombinations {
-//     0?: string[],
-//     1?: string[],
-//     2?: string[],
-//     3?: string[],
-//     4?: string[],
-//     5?: string[],
-//     6?: string[],
-//     7?: string[],
-//     8?: string[]
-// }
-
 
 interface PossibleConfig {
     0?: string,
